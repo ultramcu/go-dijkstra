@@ -114,10 +114,8 @@ func main() {
 
 ## License
 
-[Mozilla Public License 2.0](LICENSE) — `SPDX-License-Identifier: MPL-2.0`.
+[MIT](LICENSE) — `SPDX-License-Identifier: MIT`.
 
-You can drop this module into any project (open or closed),
-commercial or otherwise. If you modify any of the files in this
-package, the modified files must remain under MPL 2.0 and their
-source must be made available alongside the binary. Application
-code that simply imports the package is not affected.
+Drop this module into any project (open or closed, commercial or
+otherwise). Just keep the copyright + permission notice with the
+source.
