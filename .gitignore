@@ -1,0 +1,24 @@
+# Go build artefacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.o
+*.a
+*.test
+*.out
+
+# coverage
+coverage.out
+coverage.html
+
+# editors / OS
+.DS_Store
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# vendor (if you ever commit one in this repo, remove this line)
+vendor/
