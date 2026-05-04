@@ -96,10 +96,14 @@ func main() {
   penalty at `VertexAdd` time, so calls to `VertexBLock` /
   `VertexBLockLoad` need to happen *before* the matching `VertexAdd`
   calls in order to take effect.
-- **Not goroutine-safe.** A search mutates per-vertex state on the
-  graph itself (`Weight`, `Parent`, `Visited`, `MaskSearch`). Don't
-  run `DijkstraSearch` / `DijkstraRun` concurrently on the same
-  `StGraph` instance.
+- **Goroutine-safe.** Every `StGraph` method is safe to call from
+  multiple goroutines. Internally a `sync.RWMutex` protects the
+  graph: read methods take the read lock, mutations and searches
+  take the write lock. Concurrent searches on the same graph
+  therefore *serialise* (a search mutates per-vertex working state),
+  but parallel reads of an idle graph run freely. For typical
+  fleet workloads the serialised throughput is well above what one
+  graph instance ever needs.
 - **Sized for small graphs.** Vertex lookup is O(n) and the
   priority queue is O(n) per insert. Comfortable up to a few
   thousand vertices; for tens of thousands you'd want indexing

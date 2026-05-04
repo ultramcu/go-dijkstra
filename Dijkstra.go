@@ -13,6 +13,12 @@ import "fmt"
 // flag). Called automatically by DijkstraRun; the caller usually
 // does not need to invoke it directly.
 func (g *StGraph) DijkstraInit() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.dijkstraInitLocked()
+}
+
+func (g *StGraph) dijkstraInitLocked() {
 	for i := range g.vertex {
 		g.vertex[i].Visited = false
 		g.vertex[i].MaskSearch = false
@@ -32,11 +38,17 @@ func (g *StGraph) DijkstraInit() {
 //
 // Returns false only if startVertex doesn't exist in the graph.
 func (g *StGraph) DijkstraRun(startVertex string) bool {
-	if !g.VertexIsExist(startVertex) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.dijkstraRunLocked(startVertex)
+}
+
+func (g *StGraph) dijkstraRunLocked(startVertex string) bool {
+	if !g.vertexIsExistLocked(startVertex) {
 		return false
 	}
 
-	g.DijkstraInit()
+	g.dijkstraInitLocked()
 
 	var pq StPriorityQueue
 	pq.EnQueue(startVertex, startVertex, 0)
@@ -52,7 +64,7 @@ func (g *StGraph) DijkstraRun(startVertex string) bool {
 			fmt.Printf("DeQueue : %v\r\n", q)
 		}
 
-		if g.VertexIsVisited(q.toVertex) {
+		if g.vertexIsVisitedLocked(q.toVertex) {
 			if g.debugEn {
 				fmt.Printf("\tVertex has been visited %s\r\n", q.toVertex)
 			}
@@ -63,10 +75,10 @@ func (g *StGraph) DijkstraRun(startVertex string) bool {
 		// and set the cumulative weight on the discovered vertex.
 		// (For the source itself there is no real from->to edge, so
 		// MaskShortEdge returns false and we skip; weight stays 0.)
-		if g.MaskShortEdge(q.fromVertex, q.toVertex) {
-			w := g.VertexGetWeight(q.fromVertex) + g.EdgeGetWeight(q.fromVertex, q.toVertex)
-			g.VertexSetWeight(q.toVertex, w)
-			g.VertexSetParent(q.toVertex, q.fromVertex)
+		if g.maskShortEdgeLocked(q.fromVertex, q.toVertex) {
+			w := g.vertexGetWeightLocked(q.fromVertex) + g.edgeGetWeightLocked(q.fromVertex, q.toVertex)
+			g.vertexSetWeightLocked(q.toVertex, w)
+			g.vertexSetParentLocked(q.toVertex, q.fromVertex)
 			debugPath += " " + q.toVertex
 			if g.debugEn {
 				fmt.Printf("\t\tSet Weight on Vertex %s = %1.2f\r\n", q.toVertex, w)
@@ -77,8 +89,8 @@ func (g *StGraph) DijkstraRun(startVertex string) bool {
 
 		// If the reverse edge exists and is two-way, it is also part
 		// of the SP tree (used by the path-walk in DijkstraSearch).
-		if !g.EdgeIsOneWay(q.toVertex, q.fromVertex) {
-			if g.MaskShortEdge(q.toVertex, q.fromVertex) && g.debugEn {
+		if !g.edgeIsOneWayLocked(q.toVertex, q.fromVertex) {
+			if g.maskShortEdgeLocked(q.toVertex, q.fromVertex) && g.debugEn {
 				fmt.Printf("\t\t\t\tShort edge from %s to %s has been masked\r\n",
 					q.toVertex, q.fromVertex)
 			}
@@ -87,13 +99,13 @@ func (g *StGraph) DijkstraRun(startVertex string) bool {
 		if g.debugEn {
 			fmt.Printf("\tVisited vertex %s\r\n", q.toVertex)
 		}
-		g.VertexSetVisited(q.toVertex)
+		g.vertexSetVisitedLocked(q.toVertex)
 
-		for _, e := range g.getAdjacencyVertices(q.toVertex) {
-			if g.VertexIsVisited(e.ToVertexName) {
+		for _, e := range g.getAdjacencyVerticesLocked(q.toVertex) {
+			if g.vertexIsVisitedLocked(e.ToVertexName) {
 				continue
 			}
-			w := g.VertexGetWeight(q.toVertex) + e.Weight
+			w := g.vertexGetWeightLocked(q.toVertex) + e.Weight
 			pq.EnQueue(q.toVertex, e.ToVertexName, w)
 			if g.debugEn {
 				fmt.Printf("\t\t\tEnQueue [%s,%s,%1.2f]\r\n",
@@ -116,18 +128,23 @@ func (g *StGraph) DijkstraRun(startVertex string) bool {
 // crosses a blocked vertex) returns ok = false and a nil slice.
 //
 // Calling DijkstraSearch implicitly resets all per-vertex Dijkstra
-// state on the graph; running it concurrently on the same graph is
-// not safe.
+// state on the graph. The graph's internal mutex is held for the
+// full duration of the call, so concurrent calls on the same graph
+// serialise (they remain safe -- no data races -- but do not run
+// in parallel).
 func (g *StGraph) DijkstraSearch(fromVertex, toVertex string) (bool, []StPath) {
-	if !g.VertexIsExist(fromVertex) || !g.VertexIsExist(toVertex) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if !g.vertexIsExistLocked(fromVertex) || !g.vertexIsExistLocked(toVertex) {
 		return false, nil
 	}
 
-	if !g.DijkstraRun(fromVertex) {
+	if !g.dijkstraRunLocked(fromVertex) {
 		return false, nil
 	}
 
-	if !g.VertexIsVisited(toVertex) {
+	if !g.vertexIsVisitedLocked(toVertex) {
 		if g.debugEn {
 			fmt.Printf("No path to target vertex\r\n")
 		}
@@ -138,7 +155,7 @@ func (g *StGraph) DijkstraSearch(fromVertex, toVertex string) (bool, []StPath) {
 	var allPath []StPath
 	name := toVertex
 	for {
-		ok, p := g.VertexToStPath(name)
+		ok, p := g.vertexToStPathLocked(name)
 		if !ok {
 			return false, nil
 		}
@@ -146,7 +163,7 @@ func (g *StGraph) DijkstraSearch(fromVertex, toVertex string) (bool, []StPath) {
 		if name == fromVertex {
 			break
 		}
-		next := g.VertexGetParent(name)
+		next := g.vertexGetParentLocked(name)
 		if next == "" || next == name {
 			// Parent chain broken before reaching the source --
 			// state is inconsistent; treat as no-path.
